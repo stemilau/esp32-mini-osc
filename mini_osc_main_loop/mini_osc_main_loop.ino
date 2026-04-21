@@ -2,9 +2,11 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 
-#define TFT_CS   5
-#define TFT_DC   2
-#define TFT_RST  4
+#define TFT_MOSI 23
+#define TFT_SCLK 18
+#define TFT_CS    15  // Chip select control pin
+#define TFT_DC    2  // Data Command control pin
+#define TFT_RST   4  // Reset pin (could connect to RST pin)
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
@@ -12,6 +14,9 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 #define WIDTH 160
 #define HEIGHT 80
+
+#define ST77XX_DARKGREY  0x7BEF
+#define ST77XX_DARKGREEN 0x03E0
 
 #define SAMPLES WIDTH
 
@@ -24,10 +29,10 @@ int triggerLevel = 2048; // mid-level trigger
 void setup() {
   analogReadResolution(12);
 
-  tft.initR(INITR_MINI160x80);
+  tft.initR(INITR_MINI160x80_PLUGIN);
   tft.setRotation(1);
-  tft.fillScreen(ST77XX_BLACK);
 
+  tft.fillScreen(ST77XX_BLACK);
   drawGrid();
 }
 
@@ -44,10 +49,10 @@ void loop() {
 void drawGrid() {
   tft.fillScreen(ST77XX_BLACK);
 
-  for (int x = 0; x < WIDTH; x += 20)
+  for (int x =20; x < WIDTH; x += 20)
     tft.drawFastVLine(x, 0, HEIGHT, ST77XX_DARKGREY);
 
-  for (int y = 0; y < HEIGHT; y += 20)
+  for (int y = 20; y < HEIGHT; y += 20)
     tft.drawFastHLine(0, y, WIDTH, ST77XX_DARKGREY);
 }
 
