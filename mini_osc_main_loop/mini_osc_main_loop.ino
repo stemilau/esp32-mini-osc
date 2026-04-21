@@ -3,8 +3,6 @@
 #include <Adafruit_ST7735.h>
 #include <driver/i2s.h>
 
-#define TFT_MOSI 23
-#define TFT_SCLK 18
 #define TFT_CS    15
 #define TFT_DC    2
 #define TFT_RST   4
@@ -22,35 +20,41 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 #define SAMPLES WIDTH
 
 uint16_t buffer[SAMPLES];
+uint16_t prevBuffer[SAMPLES];
 
 int triggerLevel = 2048;
 
-// ---------------- GRID CONTROL (FIX #3)
+// persistence strength (higher = longer glow)
+#define FADE_AMOUNT 20
+
 bool gridDrawn = false;
 
-// ---------------- SETUP
+// =======================================================
+// SETUP
+// =======================================================
 void setup() {
-  Serial.begin(115200);
 
   analogReadResolution(12);
 
   tft.initR(INITR_MINI160x80_PLUGIN);
   tft.setRotation(1);
 
-  setupI2S();          // FIX #1
-  drawGrid();          // FIX #3 (draw once)
-}
-
-// ---------------- MAIN LOOP
-void loop() {
-
-  waitForTrigger();    // FIX #2
-  captureSamples();    // FIX #1
-  drawWaveform();      // FIX #4 + #5
+  setupI2S();
+  drawGrid();
 }
 
 // =======================================================
-// FIX #1 — I2S ADC (stable high-speed sampling)
+// LOOP
+// =======================================================
+void loop() {
+
+  waitForTrigger();
+  captureSamples();
+  drawWaveform();
+}
+
+// =======================================================
+// I2S ADC SETUP (HIGH SPEED)
 // =======================================================
 void setupI2S() {
 
@@ -72,25 +76,7 @@ void setupI2S() {
 }
 
 // =======================================================
-// FIX #1 — capture samples (I2S DMA)
-// =======================================================
-void captureSamples() {
-
-  size_t bytesRead;
-
-  i2s_read(I2S_NUM_0, buffer, sizeof(buffer), &bytesRead, portMAX_DELAY);
-
-  int count = bytesRead / 2;
-  if (count > WIDTH) count = WIDTH;
-
-  // FIX #5 — light smoothing (reduce noise)
-  for (int i = 1; i < count; i++) {
-    buffer[i] = (buffer[i] + buffer[i - 1]) / 2;
-  }
-}
-
-// =======================================================
-// FIX #2 — stable trigger (edge detection)
+// TRIGGER (stable edge detection)
 // =======================================================
 void waitForTrigger() {
 
@@ -108,7 +94,25 @@ void waitForTrigger() {
 }
 
 // =======================================================
-// FIX #3 — grid drawn ONCE (no flicker)
+// CAPTURE (I2S DMA)
+// =======================================================
+void captureSamples() {
+
+  size_t bytesRead;
+
+  i2s_read(I2S_NUM_0, buffer, sizeof(buffer), &bytesRead, portMAX_DELAY);
+
+  int count = bytesRead / 2;
+  if (count > WIDTH) count = WIDTH;
+
+  // smoothing (simple low-pass filter)
+  for (int i = 1; i < count; i++) {
+    buffer[i] = (buffer[i] + buffer[i - 1]) / 2;
+  }
+}
+
+// =======================================================
+// GRID (draw ONCE ONLY)
 // =======================================================
 void drawGrid() {
 
@@ -126,26 +130,45 @@ void drawGrid() {
 }
 
 // =======================================================
-// FIX #4 + #5 — smooth waveform drawing
+// PERSISTENCE FADE (phosphor effect)
+// =======================================================
+void fadeScreen() {
+
+  for (int y = 0; y < HEIGHT; y++) {
+    for (int x = 0; x < WIDTH; x++) {
+
+      uint16_t c = tft.readPixel(x, y);
+
+      // fade green channel slightly
+      if (c != ST77XX_BLACK) {
+        tft.drawPixel(x, y, c & 0xF7DE); // reduce brightness
+      }
+    }
+  }
+}
+
+// =======================================================
+// WAVEFORM RENDER (REAL DSO STYLE)
 // =======================================================
 void drawWaveform() {
 
-  int prevY = map(buffer[0], 0, 4095, HEIGHT - 1, 0);
+  fadeScreen(); // persistence effect ⭐
 
   for (int x = 1; x < WIDTH; x++) {
 
-    // FIX #5 — extra smoothing
     int value = (buffer[x] + buffer[x - 1]) / 2;
-
     int y = map(value, 0, 4095, HEIGHT - 1, 0);
 
-    // main trace
-    tft.drawLine(x - 1, prevY, x, y, ST77XX_GREEN);
+    int prevY = map(prevBuffer[x], 0, 4095, HEIGHT - 1, 0);
 
-    // phosphor glow
+    // erase old trace slightly (NOT full clear)
+    tft.drawPixel(x, prevY, ST77XX_BLACK);
+
+    // draw new trace
+    tft.drawPixel(x, y, ST77XX_GREEN);
     tft.drawPixel(x, y + 1, ST77XX_DARKGREEN);
     tft.drawPixel(x, y - 1, ST77XX_DARKGREEN);
 
-    prevY = y;
+    prevBuffer[x] = buffer[x];
   }
 }
